@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { Controls } from "components";
-import { useAudioPlayer, useEffectOnce } from "hooks";
+import { useAudioPlayer, useEffectOnce, useEventListener, useViewContext } from "hooks";
 import styled from "styled-components";
 import { Unit } from "utils/constants";
 import * as Utils from "utils";
+import { IpodEvent } from "utils/events";
+import viewConfigMap from "components/views";
 
 const Container = styled.div`
   height: 100%;
@@ -65,8 +67,9 @@ interface Props {
 }
 
 const NowPlaying = ({ hideArtwork, onHide }: Props) => {
-  const { nowPlayingItem, playbackInfo, updateNowPlayingItem, updatePlaybackInfo } =
+  const { nowPlayingItem, playbackInfo, updateNowPlayingItem, updatePlaybackInfo, isLooping, toggleLoop, playNext, addToQueue } =
     useAudioPlayer();
+  const { showView } = useViewContext();
 
   useEffectOnce(() => {
     updateNowPlayingItem();
@@ -79,6 +82,52 @@ const NowPlaying = ({ hideArtwork, onHide }: Props) => {
       onHide();
     }
   }, [playbackInfo, nowPlayingItem, onHide]);
+
+  // Handle center button long press to show action sheet
+  const handleCenterLongClick = useCallback(() => {
+    if (!nowPlayingItem) return;
+
+    showView({
+      type: "actionSheet",
+      id: viewConfigMap.mediaActionSheet.id,
+      listOptions: [
+        {
+          type: "action",
+          label: isLooping ? "Loop: On" : "Loop: Off",
+          isSelected: isLooping,
+          onSelect: toggleLoop,
+        },
+        {
+          type: "action",
+          label: "Shuffle",
+          onSelect: () => {
+            // Shuffle functionality can be added later if needed
+            console.log("Shuffle not yet implemented in Now Playing");
+          },
+        },
+        {
+          type: "action",
+          label: "Play Next",
+          onSelect: () => {
+            if (nowPlayingItem) {
+              playNext({ song: nowPlayingItem as MediaApi.Song });
+            }
+          },
+        },
+        {
+          type: "action",
+          label: "Add to Queue",
+          onSelect: () => {
+            if (nowPlayingItem) {
+              addToQueue({ song: nowPlayingItem as MediaApi.Song });
+            }
+          },
+        },
+      ],
+    });
+  }, [nowPlayingItem, isLooping, toggleLoop, showView, playNext, addToQueue]);
+
+  useEventListener<IpodEvent>("centerlongclick", handleCenterLongClick);
 
   const artworkUrl = Utils.getArtwork(300, nowPlayingItem?.artwork?.url);
 

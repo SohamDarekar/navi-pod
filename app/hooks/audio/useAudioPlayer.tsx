@@ -19,6 +19,7 @@ import {
 } from "utils/navidrome/client";
 
 export const VOLUME_KEY = "ipodVolume";
+export const LOOP_KEY = "ipodLoop";
 
 const defaultPlaybackInfoState = {
   isPlaying: false,
@@ -35,6 +36,7 @@ interface AudioPlayerState {
   nowPlayingItem?: MediaApi.MediaItem;
   volume: number;
   queue: MediaApi.Song[];
+  isLooping: boolean;
   play: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
   playNext: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
   addToQueue: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
@@ -44,6 +46,7 @@ interface AudioPlayerState {
   skipNext: () => Promise<void>;
   skipPrevious: () => Promise<void>;
   togglePlayPause: () => Promise<void>;
+  toggleLoop: () => void;
   updateNowPlayingItem: () => void;
   updatePlaybackInfo: () => void;
   removeFromQueue: (index: number) => void;
@@ -65,6 +68,7 @@ interface Props {
 export const AudioPlayerProvider = ({ children }: Props) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [volume, setVolumeState] = useState(0.5);
+  const [isLooping, setIsLooping] = useState(false);
   const [nowPlayingItem, setNowPlayingItem] = useState<MediaApi.MediaItem>();
   const [playbackInfo, setPlaybackInfo] = useState(defaultPlaybackInfoState);
   const [queue, setQueue] = useState<MediaApi.Song[]>([]);
@@ -93,6 +97,10 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       const savedVolume = parseFloat(localStorage.getItem(VOLUME_KEY) ?? "0.5");
       audioRef.current.volume = savedVolume;
       setVolumeState(savedVolume);
+      
+      // Load saved loop state
+      const savedLoop = localStorage.getItem(LOOP_KEY) === "true";
+      setIsLooping(savedLoop);
     }
 
     return () => {
@@ -280,6 +288,15 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       const completedItem = nowPlayingItemRef.current;
       if (completedItem) {
         scrobble(completedItem.id).catch(console.error);
+      }
+      
+      // Check if looping is enabled
+      const savedLoop = localStorage.getItem(LOOP_KEY) === "true";
+      if (savedLoop && audio) {
+        // Loop the current song
+        audio.currentTime = 0;
+        audio.play().catch(console.error);
+        return;
       }
       
       const currentQueue = queueRef.current;
@@ -472,6 +489,12 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     setVolumeState(newVolume);
   }, []);
 
+  const toggleLoop = useCallback(() => {
+    const newLoopState = !isLooping;
+    setIsLooping(newLoopState);
+    localStorage.setItem(LOOP_KEY, `${newLoopState}`);
+  }, [isLooping]);
+
   const removeFromQueue = useCallback((index: number) => {
     setQueue((prevQueue) => {
       if (index < 0 || index >= prevQueue.length) return prevQueue;
@@ -540,6 +563,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     nowPlayingItem,
     volume,
     queue,
+    isLooping,
     play,
     playNext,
     addToQueue,
@@ -547,6 +571,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     seekToTime,
     setVolume,
     togglePlayPause,
+    toggleLoop,
     updateNowPlayingItem,
     updatePlaybackInfo,
     skipNext,
@@ -557,6 +582,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     nowPlayingItem,
     volume,
     queue,
+    isLooping,
     play,
     playNext,
     addToQueue,
@@ -564,6 +590,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     seekToTime,
     setVolume,
     togglePlayPause,
+    toggleLoop,
     updateNowPlayingItem,
     updatePlaybackInfo,
     skipNext,

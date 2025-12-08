@@ -39,6 +39,15 @@ const ContentTransitionContainer = styled.div<ContentTransitionContainerProps>`
   padding: ${Unit.XS} 0;
   background: linear-gradient(180deg, #bbbcbf 0%, #626770 11.69%, #626770 100%);
   box-shadow: 0 0px 4px black;
+  max-height: 232px;
+  overflow: hidden;
+`;
+
+const ScrollableContainer = styled.div<{ $offset: number }>`
+  width: 100%;
+  transform: translateY(-${(props) => props.$offset}px);
+  will-change: transform;
+  transition: transform 0.2s ease-out;
 `;
 
 const OptionText = styled.h3`
@@ -55,6 +64,7 @@ const OptionContainer = styled.div<{ $highlighted: boolean }>`
   padding: ${Unit.XXS} ${Unit.MD};
   text-align: center;
   border: 3px solid transparent;
+  height: 56px;
 
   ${({ $highlighted }) =>
     $highlighted &&
@@ -118,11 +128,12 @@ const ActionSheet = ({ viewStack, index, isHidden }: Props) => {
     hideView();
   });
 
-  const { selectedIndex } = useMenuNavigation({
+  const { selectedIndex, scrollOffset } = useMenuNavigation({
     id: viewOptions.id,
     items: options,
     selectedOption,
-    ...MENU_CONFIG_STANDARD,
+    itemHeight: 56,
+    visibleCount: 4,
   });
 
   return (
@@ -132,14 +143,16 @@ const ActionSheet = ({ viewStack, index, isHidden }: Props) => {
       {...slideUpAnimation}
     >
       <ContentTransitionContainer $isHidden={isHidden}>
-        {options.map((option, i) => (
-          <OptionContainer
-            key={`popup-option-${option.label}`}
-            $highlighted={selectedIndex === i}
-          >
-            <OptionText>{option.label}</OptionText>
-          </OptionContainer>
-        ))}
+        <ScrollableContainer $offset={scrollOffset}>
+          {options.map((option, i) => (
+            <OptionContainer
+              key={`popup-option-${option.label}`}
+              $highlighted={selectedIndex === i}
+            >
+              <OptionText>{option.label}</OptionText>
+            </OptionContainer>
+          ))}
+        </ScrollableContainer>
       </ContentTransitionContainer>
     </RootContainer>
   );

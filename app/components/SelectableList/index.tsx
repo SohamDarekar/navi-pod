@@ -38,7 +38,7 @@ type SharedOptionProps = {
 type ViewOptionProps = {
   type: "view";
   viewId: string;
-  component: React.ReactNode | ((...args: any) => JSX.Element);
+  component: React.ReactNode | ((...args: any) => React.ReactElement);
   headerTitle?: string;
 };
 

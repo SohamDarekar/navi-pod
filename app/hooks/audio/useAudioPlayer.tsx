@@ -74,7 +74,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const nowPlayingItemRef = useRef(nowPlayingItem);
-  const playTrackRef = useRef<(song: MediaApi.Song) => Promise<void>>();
+  const playTrackRef = useRef<((song: MediaApi.Song) => Promise<void>) | undefined>(undefined);
   
   // Keep refs in sync
   useEffect(() => {

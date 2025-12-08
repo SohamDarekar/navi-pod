@@ -162,7 +162,7 @@ const useMenuNavigation = ({
   const [scrollOffset, setScrollOffset] = useState(0);
 
   // Refs for stable access in callbacks
-  const timeoutIdRef = useRef<NodeJS.Timeout>();
+  const timeoutIdRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const scrollOffsetRef = useRef(scrollOffset);
@@ -264,7 +264,7 @@ const useMenuNavigation = ({
   const handleShowView = useCallback(
     (
       viewId: string,
-      component: React.ReactNode | ((...args: any) => JSX.Element),
+      component: React.ReactNode | ((...args: any) => React.ReactElement),
       headerTitle?: string
     ) => {
       showView({

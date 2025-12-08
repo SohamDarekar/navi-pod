@@ -54,7 +54,7 @@ const useScrollHandler = (
   const { showView, viewStack, setPreview } = useViewContext();
   const { play } = useAudioPlayer();
   const [index, setIndex] = useState(getInitIndex(options, selectedOption));
-  const timeoutIdRef = useRef<NodeJS.Timeout>();
+  const timeoutIdRef = useRef<NodeJS.Timeout | undefined>(undefined);
   
   /** Only fire events on the top-most view. */
   const topView = viewStack?.[viewStack.length - 1];
@@ -137,7 +137,7 @@ const useScrollHandler = (
   const handleShowView = useCallback(
     (
       id: string,
-      component: React.ReactNode | ((...args: any) => JSX.Element),
+      component: React.ReactNode | ((...args: any) => React.ReactElement),
       headerTitle?: string
     ) => {
       showView({

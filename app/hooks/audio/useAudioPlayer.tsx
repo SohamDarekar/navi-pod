@@ -313,8 +313,11 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         newQueue.splice(idx, 1);
         setQueue(newQueue);
         
+        // Update currentIndex to maintain proper state tracking
+        // Even though the numeric value stays the same, this ensures React recognizes the state change
+        setCurrentIndex(idx);
+        
         // Play the next song (which has now shifted into the current index position)
-        // Note: we do NOT update currentIndex because the queue shifted left.
         playTrackRef.current?.(nextSong);
       } else {
         setPlaybackInfo((prev) => ({

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SelectableList, SelectableListOption } from "components";
 import { SplitScreenPreview } from "components/previews";
-import viewConfigMap, { AboutView } from "components/views";
+import viewConfigMap, { AboutView, PlaybackSettingsView } from "components/views";
 import { useMenuHideView, useMenuNavigation, useViewContext, useSettings } from "hooks";
 import { MENU_CONFIG_STANDARD } from "utils/constants";
 import {
@@ -256,6 +256,15 @@ const SettingsView = () => {
         }
       );
     }
+
+    // Playback Settings (always available)
+    baseOptions.push({
+      type: "view",
+      label: "Playback",
+      viewId: viewConfigMap.playbackSettings.id,
+      component: () => <PlaybackSettingsView />,
+      preview: SplitScreenPreview.PlaybackSettings,
+    });
 
     // Device theme (always available)
     baseOptions.push({

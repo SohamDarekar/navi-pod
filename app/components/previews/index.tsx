@@ -5,6 +5,7 @@ import ServicePreview from "./ServicePreview";
 import SettingsPreview from "./SettingsPreview";
 import SyncStatusPreview from "./SyncStatusPreview";
 import ThemePreview from "./ThemePreview";
+import PlaybackSettingsPreview from "./PlaybackSettingsPreview";
 
 export enum SplitScreenPreview {
   Music = "music",
@@ -14,6 +15,7 @@ export enum SplitScreenPreview {
   Service = "service",
   Theme = "theme",
   SyncStatus = "syncStatus",
+  PlaybackSettings = "playbackSettings",
 }
 
 export const Previews = {
@@ -24,6 +26,7 @@ export const Previews = {
   [SplitScreenPreview.Service]: () => <ServicePreview />,
   [SplitScreenPreview.Theme]: () => <ThemePreview />,
   [SplitScreenPreview.SyncStatus]: () => <SyncStatusPreview />,
+  [SplitScreenPreview.PlaybackSettings]: () => <PlaybackSettingsPreview />,
 };
 
 export { SyncStatusPreview };

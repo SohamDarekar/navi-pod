@@ -4,6 +4,8 @@ import {
   AudioPlayerProvider,
   SettingsContext,
   SettingsProvider,
+  PlaybackQualityProvider,
+  FadeSettingsProvider,
 } from "hooks";
 import { ClickWheel, ViewManager } from "components";
 import {
@@ -35,27 +37,31 @@ const Ipod = () => {
     <QueryClientProvider client={queryClient}>
       <GlobalStyles />
       <SettingsProvider>
-        <SyncStatusProvider>
-          <ViewContextProvider>
-            <AudioPlayerProvider>
-            <SettingsContext.Consumer>
-              {([{ deviceTheme }]) => (
-                <Shell $deviceTheme={deviceTheme}>
-                  <Sticker $deviceTheme={deviceTheme} />
-                  <Sticker2 $deviceTheme={deviceTheme} />
-                  <Sticker3 $deviceTheme={deviceTheme} />
-                  <ScreenContainer>
-                    <ViewManager />
-                  </ScreenContainer>
-                  <ClickWheelContainer>
-                    <ClickWheel />
-                  </ClickWheelContainer>
-                </Shell>
-              )}
-            </SettingsContext.Consumer>
-          </AudioPlayerProvider>
-        </ViewContextProvider>
-        </SyncStatusProvider>
+        <PlaybackQualityProvider>
+          <FadeSettingsProvider>
+            <SyncStatusProvider>
+              <ViewContextProvider>
+                <AudioPlayerProvider>
+              <SettingsContext.Consumer>
+                {([{ deviceTheme }]) => (
+                  <Shell $deviceTheme={deviceTheme}>
+                    <Sticker $deviceTheme={deviceTheme} />
+                    <Sticker2 $deviceTheme={deviceTheme} />
+                    <Sticker3 $deviceTheme={deviceTheme} />
+                    <ScreenContainer>
+                      <ViewManager />
+                    </ScreenContainer>
+                    <ClickWheelContainer>
+                      <ClickWheel />
+                    </ClickWheelContainer>
+                  </Shell>
+                )}
+              </SettingsContext.Consumer>
+              </AudioPlayerProvider>
+            </ViewContextProvider>
+            </SyncStatusProvider>
+          </FadeSettingsProvider>
+        </PlaybackQualityProvider>
       </SettingsProvider>
     </QueryClientProvider>
   );

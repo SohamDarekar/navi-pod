@@ -183,9 +183,9 @@ export async function testConnection(credentials: NavidromeCredentials): Promise
 
 /**
  * Generate a streaming URL for a song
- * Always uses format=raw for lossless playback
+ * Supports multiple quality formats: raw (FLAC), mp3, opus, aac
  */
-export function getStreamUrl(songId: string): string {
+export function getStreamUrl(songId: string, format: "raw" | "mp3" | "opus" | "aac" = "raw"): string {
   const credentials = getCredentials();
   if (!credentials) return "";
 
@@ -193,7 +193,7 @@ export function getStreamUrl(songId: string): string {
   const params = {
     ...authParams,
     id: songId,
-    format: "raw",
+    format: format,
     estimateContentLength: "true",
   };
 

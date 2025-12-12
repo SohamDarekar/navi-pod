@@ -17,6 +17,10 @@ import {
   scrobble,
   isAuthenticated,
 } from "utils/navidrome/client";
+import { PLAYBACK_QUALITY_KEY } from "hooks/utils/usePlaybackQuality";
+import type { PlaybackQuality } from "hooks/utils/usePlaybackQuality";
+import { FADE_IN_KEY, FADE_OUT_KEY } from "hooks/utils/useFadeSettings";
+import type { FadeDuration } from "hooks/utils/useFadeSettings";
 
 export const VOLUME_KEY = "ipodVolume";
 export const LOOP_KEY = "ipodLoop";
@@ -75,6 +79,15 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const [playbackInfo, setPlaybackInfo] = useState(defaultPlaybackInfoState);
   const [queue, setQueue] = useState<MediaApi.Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [playbackQuality, setPlaybackQuality] = useState<PlaybackQuality>("raw");
+  const [fadeInDuration, setFadeInDuration] = useState<FadeDuration>(0);
+  const [fadeOutDuration, setFadeOutDuration] = useState<FadeDuration>(0);
+  
+  const fadeInIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const fadeOutIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const originalVolumeRef = useRef<number>(0.5);
+  const fadeOutStartedRef = useRef<boolean>(false);
+  const currentTrackIdRef = useRef<string | null>(null);
 
   // Refs for callbacks to avoid stale closures
   const queueRef = useRef(queue);
@@ -103,6 +116,14 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       
       const savedLoop = localStorage.getItem(LOOP_KEY) === "true";
       setIsLooping(savedLoop);
+      
+      const savedQuality = (localStorage.getItem(PLAYBACK_QUALITY_KEY) as PlaybackQuality) ?? "raw";
+      setPlaybackQuality(savedQuality);
+      
+      const savedFadeIn = localStorage.getItem(FADE_IN_KEY);
+      const savedFadeOut = localStorage.getItem(FADE_OUT_KEY);
+      if (savedFadeIn) setFadeInDuration(parseInt(savedFadeIn) as FadeDuration);
+      if (savedFadeOut) setFadeOutDuration(parseInt(savedFadeOut) as FadeDuration);
     }
 
     return () => {
@@ -111,6 +132,118 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         audioRef.current.removeAttribute("src");
       }
     };
+  }, []);
+
+  // Listen for playback quality changes
+  useEffect(() => {
+    const handleQualityChange = (event: Event) => {
+      const customEvent = event as CustomEvent<PlaybackQuality>;
+      if (customEvent.detail) {
+        setPlaybackQuality(customEvent.detail);
+        // If currently playing, reload with new quality
+        const audio = audioRef.current;
+        const currentSong = queue[currentIndex];
+        if (audio && currentSong && nowPlayingItem) {
+          const wasPlaying = !audio.paused;
+          const currentTime = audio.currentTime;
+          const newStreamUrl = getStreamUrl(currentSong.id, customEvent.detail);
+          audio.src = newStreamUrl;
+          audio.currentTime = currentTime;
+          if (wasPlaying) {
+            audio.play().catch(console.error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("playback-quality-changed", handleQualityChange);
+    return () => window.removeEventListener("playback-quality-changed", handleQualityChange);
+  }, [queue, currentIndex, nowPlayingItem]);
+
+  // Listen for fade settings changes
+  useEffect(() => {
+    const handleFadeInChange = (event: Event) => {
+      const customEvent = event as CustomEvent<FadeDuration>;
+      if (customEvent.detail !== undefined) {
+        setFadeInDuration(customEvent.detail);
+      }
+    };
+
+    const handleFadeOutChange = (event: Event) => {
+      const customEvent = event as CustomEvent<FadeDuration>;
+      if (customEvent.detail !== undefined) {
+        setFadeOutDuration(customEvent.detail);
+      }
+    };
+
+    window.addEventListener("fade-in-changed", handleFadeInChange);
+    window.addEventListener("fade-out-changed", handleFadeOutChange);
+    return () => {
+      window.removeEventListener("fade-in-changed", handleFadeInChange);
+      window.removeEventListener("fade-out-changed", handleFadeOutChange);
+    };
+  }, []);
+
+  // Fade in/out helper functions
+  const applyFadeIn = useCallback((audio: HTMLAudioElement, duration: FadeDuration, targetVolume: number) => {
+    if (duration === 0) {
+      audio.volume = targetVolume;
+      return;
+    }
+
+    audio.volume = 0;
+    const steps = 50;
+    const stepDuration = (duration * 1000) / steps;
+    const volumeIncrement = targetVolume / steps;
+    let currentStep = 0;
+
+    if (fadeInIntervalRef.current) {
+      clearInterval(fadeInIntervalRef.current);
+    }
+
+    fadeInIntervalRef.current = setInterval(() => {
+      currentStep++;
+      if (currentStep >= steps) {
+        audio.volume = targetVolume;
+        if (fadeInIntervalRef.current) {
+          clearInterval(fadeInIntervalRef.current);
+          fadeInIntervalRef.current = null;
+        }
+      } else {
+        audio.volume = Math.min(volumeIncrement * currentStep, targetVolume);
+      }
+    }, stepDuration);
+  }, []);
+
+  const applyFadeOut = useCallback((audio: HTMLAudioElement, duration: FadeDuration, callback: () => void) => {
+    if (duration === 0) {
+      callback();
+      return;
+    }
+
+    const startVolume = audio.volume;
+    const steps = 50;
+    const stepDuration = (duration * 1000) / steps;
+    const volumeDecrement = startVolume / steps;
+    let currentStep = 0;
+
+    if (fadeOutIntervalRef.current) {
+      clearInterval(fadeOutIntervalRef.current);
+    }
+
+    fadeOutIntervalRef.current = setInterval(() => {
+      currentStep++;
+      if (currentStep >= steps) {
+        audio.volume = 0;
+        if (fadeOutIntervalRef.current) {
+          clearInterval(fadeOutIntervalRef.current);
+          fadeOutIntervalRef.current = null;
+        }
+        callback();
+      } else {
+        audio.volume = Math.max(startVolume - volumeDecrement * currentStep, 0);
+      }
+    }, stepDuration);
   }, []);
 
   // Preloading Logic
@@ -126,7 +259,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         const nextIndex = currentIndex + i;
         if (nextIndex < queue.length) {
           const nextSong = queue[nextIndex];
-          const streamUrl = getStreamUrl(nextSong.id);
+          const streamUrl = getStreamUrl(nextSong.id, playbackQuality);
           
           if (streamUrl) {
             const audio = new Audio();
@@ -149,7 +282,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         audio.load(); 
       });
     };
-  }, [queue, currentIndex]);
+  }, [queue, currentIndex, playbackQuality]);
 
   const getArtworkForSize = (url: string, size: number) => {
     if (!url) return "";
@@ -188,7 +321,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       const audio = audioRef.current;
       if (!audio || !isAuthenticated()) return;
 
-      const streamUrl = getStreamUrl(song.id);
+      const streamUrl = getStreamUrl(song.id, playbackQuality);
       if (!streamUrl) return;
 
       const artworkUrl = song.artwork?.url || getCoverArtUrl(song.id);
@@ -205,6 +338,22 @@ export const AudioPlayerProvider = ({ children }: Props) => {
 
       audio.src = streamUrl;
       
+      // Store the target volume and reset fade-out tracking
+      // Use the volume state instead of audio.volume to avoid capturing 0 from previous fade-out
+      originalVolumeRef.current = volume;
+      fadeOutStartedRef.current = false;
+      currentTrackIdRef.current = song.id;
+      
+      // Clear any existing fade intervals
+      if (fadeInIntervalRef.current) {
+        clearInterval(fadeInIntervalRef.current);
+        fadeInIntervalRef.current = null;
+      }
+      if (fadeOutIntervalRef.current) {
+        clearInterval(fadeOutIntervalRef.current);
+        fadeOutIntervalRef.current = null;
+      }
+      
       try {
         await audio.play();
       } catch (error: any) {
@@ -213,7 +362,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         }
       }
     },
-    [updateMediaSession]
+    [updateMediaSession, playbackQuality, volume]
   );
 
   useEffect(() => {
@@ -228,6 +377,14 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     const handlePlay = () => {
       setPlaybackInfo((prev) => ({ ...prev, isPlaying: true, isPaused: false, isLoading: false }));
       if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+      
+      // Apply fade-in when playback actually starts
+      if (fadeInDuration > 0 && !fadeOutStartedRef.current) {
+        applyFadeIn(audio, fadeInDuration, originalVolumeRef.current);
+      } else if (fadeInDuration === 0) {
+        // Ensure volume is set correctly when no fade-in
+        audio.volume = originalVolumeRef.current;
+      }
     };
 
     const handlePause = () => {
@@ -268,6 +425,18 @@ export const AudioPlayerProvider = ({ children }: Props) => {
           duration,
         }));
         lastUpdateTimeRef.current = now;
+      }
+      
+      // Check if we need to start fade-out
+      if (fadeOutDuration > 0 && duration > fadeOutDuration && !fadeOutStartedRef.current) {
+        const fadeOutStartTime = duration - fadeOutDuration;
+        // Only start fade-out if we're within the fade-out window and fade-in is complete
+        if (currentTime >= fadeOutStartTime && currentTime < duration - 0.5 && !fadeInIntervalRef.current) {
+          fadeOutStartedRef.current = true;
+          // Use original volume as the starting point for fade-out
+          audio.volume = originalVolumeRef.current;
+          applyFadeOut(audio, fadeOutDuration, () => {});
+        }
       }
     };
 
@@ -316,8 +485,16 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);
+      
+      // Clear fade intervals on unmount
+      if (fadeInIntervalRef.current) {
+        clearInterval(fadeInIntervalRef.current);
+      }
+      if (fadeOutIntervalRef.current) {
+        clearInterval(fadeOutIntervalRef.current);
+      }
     };
-  }, []);
+  }, [fadeInDuration, fadeOutDuration, applyFadeIn, applyFadeOut]);
 
   const extractSongs = (queueOptions: MediaApi.QueueOptions): MediaApi.Song[] => {
     if (queueOptions.album?.songs) return queueOptions.album.songs;
@@ -431,6 +608,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     audioRef.current && (audioRef.current.volume = newVolume);
     localStorage.setItem(VOLUME_KEY, `${newVolume}`);
     setVolumeState(newVolume);
+    originalVolumeRef.current = newVolume;
   }, []);
 
   const toggleLoop = useCallback(() => {

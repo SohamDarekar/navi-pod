@@ -11,6 +11,7 @@ export { default as GamesView } from "./GamesView";
 export { default as HomeView } from "./HomeView";
 export { default as MusicView } from "./MusicView";
 export { default as NowPlayingView } from "./NowPlayingView";
+export { default as PlaybackSettingsView } from "./PlaybackSettingsView";
 export { default as PlaylistView } from "./PlaylistView";
 export { default as PlaylistsView } from "./PlaylistsView";
 export { default as QueueView } from "./QueueView";
@@ -64,6 +65,12 @@ export const viewConfigMap: Record<string, ViewConfig> = {
     title: "About",
     type: "screen",
     preview: SplitScreenPreview.Settings,
+  },
+  playbackSettings: {
+    id: "playbackSettings",
+    title: "Playback",
+    type: "screen",
+    preview: SplitScreenPreview.PlaybackSettings,
   },
   artists: {
     id: "artists",

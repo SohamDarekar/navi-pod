@@ -8,43 +8,41 @@ import * as Utils from "utils";
 
 const QueueView = () => {
   useMenuHideView(viewConfigMap.queue.id);
-  const { queue, play, removeFromQueue } = useAudioPlayer();
+  // 1. Destructure currentIndex safely with default value
+  const { queue, currentIndex = 0, play } = useAudioPlayer();
 
-  const handlePlaySong = useCallback(
-    (index: number) => {
-      play({
-        songs: queue,
-        startPosition: index,
-      });
-    },
-    [play, queue]
-  );
-
-  const handleRemoveFromQueue = useCallback(
-    (index: number) => {
-      removeFromQueue(index);
-    },
-    [removeFromQueue]
-  );
+  const visibleQueue = useMemo(() => {
+    // 2. SAFETY CHECK: Ensure queue exists before slicing
+    // If queue is undefined, default to empty array []
+    const safeQueue = queue || [];
+    
+    if (safeQueue.length === 0) return [];
+    
+    // Ensure currentIndex is a valid number
+    const safeIndex = typeof currentIndex === 'number' ? currentIndex : 0;
+    
+    return safeQueue.slice(safeIndex);
+  }, [queue, currentIndex]);
 
   const options: SelectableListOption[] = useMemo(
     () =>
-      queue.map((song, index) => ({
-        type: "action",
+      visibleQueue.map((song, idx) => ({
+        type: "action" as const,
         label: song.name,
-        sublabel: `${song.artistName} • ${song.albumName}`,
-        onSelect: () => handlePlaySong(index),
+        sublabel: song.artistName,
         imageUrl: Utils.getArtwork(50, song.artwork?.url),
-        longPressOptions: [
-          {
-            type: "action",
-            label: "Remove from Queue",
-            onSelect: () => handleRemoveFromQueue(index),
-          },
-          ...Utils.getMediaOptions("song", song.id),
-        ],
-      })) ?? [],
-    [queue, handlePlaySong, handleRemoveFromQueue]
+        onSelect: async () => {
+          // Calculate real index (relative to full queue)
+          const safeCurrentIndex = typeof currentIndex === 'number' ? currentIndex : 0;
+          const realIndex = safeCurrentIndex + idx;
+          
+          const safeQueue = queue || [];
+          if (realIndex < safeQueue.length) {
+            await play({ songs: safeQueue, startPosition: realIndex });
+          }
+        },
+      })),
+    [visibleQueue, queue, currentIndex, play]
   );
 
   const { selectedIndex, scrollOffset } = useMenuNavigation({
@@ -60,7 +58,7 @@ const QueueView = () => {
       scrollOffset={scrollOffset}
       itemHeight={MENU_CONFIG_STANDARD.itemHeight}
       visibleCount={MENU_CONFIG_STANDARD.visibleCount}
-      emptyMessage="Queue is empty"
+      emptyMessage="Your queue is empty"
     />
   );
 };

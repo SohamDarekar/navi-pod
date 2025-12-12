@@ -38,7 +38,7 @@ const Progress = styled.div.attrs<ProgressProps>((props) => ({
   height: 100%;
   background: ${({ $isTransparent }) =>
     !$isTransparent && `url("${APP_URL}/gloss-blue.svg") repeat-x`};
-  transition: width 0.1s;
+  transition: width 1s linear;
 `;
 
 /** The icon that is displayed when scrubbing. */

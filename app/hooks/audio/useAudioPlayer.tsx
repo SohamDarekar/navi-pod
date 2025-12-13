@@ -40,7 +40,7 @@ interface AudioPlayerState {
   nowPlayingItem?: MediaApi.MediaItem;
   volume: number;
   queue: MediaApi.Song[];
-  currentIndex: number; // <--- THIS IS REQUIRED FOR QUEUE VIEW
+  currentIndex: number;
   isLooping: boolean;
   play: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
   playNext: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
@@ -88,6 +88,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const originalVolumeRef = useRef<number>(0.5);
   const fadeOutStartedRef = useRef<boolean>(false);
   const currentTrackIdRef = useRef<string | null>(null);
+  
+  // MODIFIED: Added ref to track if current song has been scrobbled
+  const hasScrobbledRef = useRef<boolean>(false);
 
   // Refs for callbacks to avoid stale closures
   const queueRef = useRef(queue);
@@ -344,6 +347,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       fadeOutStartedRef.current = false;
       currentTrackIdRef.current = song.id;
       
+      // MODIFIED: Reset scrobble state for new song
+      hasScrobbledRef.current = false;
+      
       // Clear any existing fade intervals
       if (fadeInIntervalRef.current) {
         clearInterval(fadeInIntervalRef.current);
@@ -399,6 +405,15 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       const currentTime = audio.currentTime;
       const duration = audio.duration || 0;
       
+      // MODIFIED: Scrobble when played more than 50%
+      if (duration > 0 && currentTime > duration / 2 && !hasScrobbledRef.current) {
+        hasScrobbledRef.current = true;
+        const currentItem = nowPlayingItemRef.current;
+        if (currentItem) {
+          scrobble(currentItem.id).catch(console.error);
+        }
+      }
+      
       if ("mediaSession" in navigator && "setPositionState" in navigator.mediaSession) {
         try {
           navigator.mediaSession.setPositionState({
@@ -442,11 +457,13 @@ export const AudioPlayerProvider = ({ children }: Props) => {
 
     const handleEnded = () => {
       const completedItem = nowPlayingItemRef.current;
-      if (completedItem) scrobble(completedItem.id).catch(console.error);
       
       const savedLoop = localStorage.getItem(LOOP_KEY) === "true";
       if (savedLoop && audio) {
         audio.currentTime = 0;
+
+        hasScrobbledRef.current = false;
+
         audio.play().catch(console.error);
         return;
       }
@@ -649,7 +666,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     nowPlayingItem,
     volume,
     queue,
-    currentIndex, // <--- EXPOSED CORRECTLY
+    currentIndex,
     isLooping,
     play,
     playNext,

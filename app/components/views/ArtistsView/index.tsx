@@ -20,7 +20,7 @@ interface Props {
 const ArtistsView = ({
   artists,
   inLibrary = true,
-  showImages = false,
+  showImages = true, 
 }: Props) => {
   useMenuHideView(viewConfigMap.artists.id);
   const { isAuthorized } = useSettings();

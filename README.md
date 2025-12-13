@@ -78,7 +78,7 @@ services:
     image: soh4m/navi-pod:latest
     container_name: navi-pod
     ports:
-      - "3003:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000

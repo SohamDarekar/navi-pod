@@ -24,6 +24,7 @@ import type { FadeDuration } from "hooks/utils/useFadeSettings";
 
 export const VOLUME_KEY = "ipodVolume";
 export const LOOP_KEY = "ipodLoop";
+export const PLAYLIST_LOOP_KEY = "ipodPlaylistLoop";
 
 const defaultPlaybackInfoState = {
   isPlaying: false,
@@ -42,6 +43,7 @@ interface AudioPlayerState {
   queue: MediaApi.Song[];
   currentIndex: number;
   isLooping: boolean;
+  isPlaylistLooping: boolean;
   play: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
   playNext: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
   addToQueue: (queueOptions: MediaApi.QueueOptions) => Promise<void>;
@@ -52,6 +54,7 @@ interface AudioPlayerState {
   skipPrevious: () => Promise<void>;
   togglePlayPause: () => Promise<void>;
   toggleLoop: () => void;
+  togglePlaylistLoop: () => void;
   updateNowPlayingItem: () => void;
   updatePlaybackInfo: () => void;
   removeFromQueue: (index: number) => void;
@@ -75,6 +78,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [volume, setVolumeState] = useState(0.5);
   const [isLooping, setIsLooping] = useState(false);
+  const [isPlaylistLooping, setIsPlaylistLooping] = useState(false);
   const [nowPlayingItem, setNowPlayingItem] = useState<MediaApi.MediaItem>();
   const [playbackInfo, setPlaybackInfo] = useState(defaultPlaybackInfoState);
   const [queue, setQueue] = useState<MediaApi.Song[]>([]);
@@ -119,6 +123,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       
       const savedLoop = localStorage.getItem(LOOP_KEY) === "true";
       setIsLooping(savedLoop);
+      
+      const savedPlaylistLoop = localStorage.getItem(PLAYLIST_LOOP_KEY) === "true";
+      setIsPlaylistLooping(savedPlaylistLoop);
       
       const savedQuality = (localStorage.getItem(PLAYBACK_QUALITY_KEY) as PlaybackQuality) ?? "raw";
       setPlaybackQuality(savedQuality);
@@ -476,6 +483,16 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         const nextIndex = idx + 1;
         setCurrentIndex(nextIndex);
         playTrackRef.current?.(currentQueue[nextIndex]);
+      } else if (currentQueue.length > 0) {
+        // Check if playlist looping is enabled
+        const savedPlaylistLoop = localStorage.getItem(PLAYLIST_LOOP_KEY) === "true";
+        if (savedPlaylistLoop) {
+          // Restart from the beginning of the queue
+          setCurrentIndex(0);
+          playTrackRef.current?.(currentQueue[0]);
+        } else {
+          setPlaybackInfo((prev) => ({ ...prev, isPlaying: false, isPaused: true, currentTime: 0, percent: 0 }));
+        }
       } else {
         setPlaybackInfo((prev) => ({ ...prev, isPlaying: false, isPaused: true, currentTime: 0, percent: 0 }));
       }
@@ -634,6 +651,12 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     localStorage.setItem(LOOP_KEY, `${newLoopState}`);
   }, [isLooping]);
 
+  const togglePlaylistLoop = useCallback(() => {
+    const newPlaylistLoopState = !isPlaylistLooping;
+    setIsPlaylistLooping(newPlaylistLoopState);
+    localStorage.setItem(PLAYLIST_LOOP_KEY, `${newPlaylistLoopState}`);
+  }, [isPlaylistLooping]);
+
   const removeFromQueue = useCallback((index: number) => {
     setQueue((prevQueue) => {
       const newQueue = [...prevQueue];
@@ -668,6 +691,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     queue,
     currentIndex,
     isLooping,
+    isPlaylistLooping,
     play,
     playNext,
     addToQueue,
@@ -676,6 +700,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     setVolume,
     togglePlayPause,
     toggleLoop,
+    togglePlaylistLoop,
     updateNowPlayingItem,
     updatePlaybackInfo,
     skipNext,
@@ -683,9 +708,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     removeFromQueue,
     clearQueue,
   }), [
-    playbackInfo, nowPlayingItem, volume, queue, currentIndex, isLooping,
+    playbackInfo, nowPlayingItem, volume, queue, currentIndex, isLooping, isPlaylistLooping,
     play, playNext, addToQueue, pause, seekToTime, setVolume, togglePlayPause,
-    toggleLoop, updateNowPlayingItem, updatePlaybackInfo, skipNext, skipPrevious,
+    toggleLoop, togglePlaylistLoop, updateNowPlayingItem, updatePlaybackInfo, skipNext, skipPrevious,
     removeFromQueue, clearQueue
   ]);
 

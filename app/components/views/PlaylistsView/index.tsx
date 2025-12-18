@@ -25,7 +25,7 @@ interface Props {
 const PlaylistsView = ({ playlists, inLibrary = true }: Props) => {
   useMenuHideView(viewConfigMap.playlists.id);
   const { isAuthorized } = useSettings();
-  const { play, playNext, addToQueue } = useAudioPlayer();
+  const { play, playNext, addToQueue, togglePlaylistLoop } = useAudioPlayer();
   const { showView } = useViewContext();
   
   const {
@@ -113,6 +113,38 @@ const PlaylistsView = ({ playlists, inLibrary = true }: Props) => {
     [addToQueue]
   );
 
+  const handleLoopPlaylist = useCallback(
+    async (playlistId: string) => {
+      try {
+        const naviPlaylist = await getPlaylist(playlistId);
+        const fullPlaylist = toMediaApiPlaylist(naviPlaylist);
+
+        if (!fullPlaylist.songs || fullPlaylist.songs.length === 0) {
+          return;
+        }
+
+        // Toggle playlist loop state
+        togglePlaylistLoop();
+
+        // Play the playlist from the beginning
+        await play({
+          songs: fullPlaylist.songs,
+          startPosition: 0,
+        });
+
+        // Open Now Playing view
+        showView({
+          id: viewConfigMap.nowPlaying.id,
+          type: "screen",
+          component: NowPlayingView,
+        });
+      } catch (error) {
+        console.error("Failed to play playlist with loop:", error);
+      }
+    },
+    [play, showView, togglePlaylistLoop]
+  );
+
   const options: SelectableListOption[] = useMemo(() => {
     const data = playlists ?? fetchedPlaylists;
 
@@ -136,6 +168,11 @@ const PlaylistsView = ({ playlists, inLibrary = true }: Props) => {
           },
           {
             type: "action",
+            label: "Loop Playlist",
+            onSelect: () => handleLoopPlaylist(playlist.id),
+          },
+          {
+            type: "action",
             label: "Play Next",
             onSelect: () => handlePlayNext(playlist.id),
           },
@@ -148,7 +185,7 @@ const PlaylistsView = ({ playlists, inLibrary = true }: Props) => {
         ],
       })) ?? []
     );
-  }, [fetchedPlaylists, inLibrary, playlists, handleShuffle, handlePlayNext, handleAddToQueue]);
+  }, [fetchedPlaylists, inLibrary, playlists, handleShuffle, handleLoopPlaylist, handlePlayNext, handleAddToQueue]);
 
   const isLoading = !options.length && isQueryLoading;
 

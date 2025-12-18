@@ -66,8 +66,27 @@ While visually faithful to the original project, the internals of NaviPod have b
 
 The easiest way to get started is using the pre-built Docker image available on [Docker Hub](https://hub.docker.com/repository/docker/soh4m/navi-pod/general).
 
+1) Run the image directly 
 ```bash
 docker run -p 3000:3000 soh4m/navi-pod
+```
+
+2) Or via a `docker-compose.yml`
+```
+services:
+  navi-pod:
+    image: soh4m/navi-pod:latest
+    container_name: navi-pod
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    restart: unless-stopped
+```
+```bash
+docker compose up
 ```
 
 Visit `http://localhost:3000` to start using NaviPod.

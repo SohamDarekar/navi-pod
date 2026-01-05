@@ -92,6 +92,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const originalVolumeRef = useRef<number>(0.5);
   const fadeOutStartedRef = useRef<boolean>(false);
   const currentTrackIdRef = useRef<string | null>(null);
+  const isChangingTrackRef = useRef<boolean>(false);
   
   // MODIFIED: Added ref to track if current song has been scrobbled
   const hasScrobbledRef = useRef<boolean>(false);
@@ -100,6 +101,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const nowPlayingItemRef = useRef(nowPlayingItem);
+  const isPlaylistLoopingRef = useRef(isPlaylistLooping);
   const playTrackRef = useRef<((song: MediaApi.Song) => Promise<void>) | undefined>(undefined);
   // Ref for throttling time updates
   const lastUpdateTimeRef = useRef(0);
@@ -109,7 +111,8 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     queueRef.current = queue;
     currentIndexRef.current = currentIndex;
     nowPlayingItemRef.current = nowPlayingItem;
-  }, [queue, currentIndex, nowPlayingItem]);
+    isPlaylistLoopingRef.current = isPlaylistLooping;
+  }, [queue, currentIndex, nowPlayingItem, isPlaylistLooping]);
 
   // Initialize audio element
   useEffect(() => {
@@ -143,6 +146,96 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       }
     };
   }, []);
+
+  // Setup Media Session action handlers - updates when queue changes
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      // Play action - DO NOT set playbackState here, let audio event listeners handle it
+      navigator.mediaSession.setActionHandler("play", async () => {
+        const audio = audioRef.current;
+        if (audio) {
+          try {
+            await audio.play();
+          } catch (error) {
+            console.error("Media Session play failed:", error);
+          }
+        }
+      });
+
+      // Pause action - DO NOT set playbackState here, let audio event listeners handle it
+      navigator.mediaSession.setActionHandler("pause", () => {
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+        }
+      });
+
+      // Conditionally set nexttrack based on queue availability
+      const hasNextTrack = queue.length > 0 && (currentIndex < queue.length - 1 || isPlaylistLooping);
+      if (hasNextTrack) {
+        navigator.mediaSession.setActionHandler("nexttrack", async () => {
+          const currentQueue = queueRef.current;
+          const idx = currentIndexRef.current;
+          const looping = isPlaylistLoopingRef.current;
+          
+          if (currentQueue.length === 0) return;
+          
+          if (idx < currentQueue.length - 1) {
+            // Not at the end, go to next track
+            const nextIndex = idx + 1;
+            setCurrentIndex(nextIndex);
+            await playTrackRef.current?.(currentQueue[nextIndex]);
+          } else if (looping) {
+            // At the end but looping is enabled, go back to start
+            setCurrentIndex(0);
+            await playTrackRef.current?.(currentQueue[0]);
+          }
+        });
+      } else {
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+      }
+
+      // Conditionally set previoustrack based on queue availability
+      const hasPreviousTrack = queue.length > 0 && currentIndex > 0;
+      if (hasPreviousTrack || queue.length > 0) {
+        navigator.mediaSession.setActionHandler("previoustrack", async () => {
+          const currentQueue = queueRef.current;
+          const idx = currentIndexRef.current;
+          const audio = audioRef.current;
+          
+          if (currentQueue.length === 0) return;
+          
+          // Restart song if > 3s played
+          if (audio && audio.currentTime > 3) {
+            audio.currentTime = 0;
+            return;
+          }
+          
+          if (idx > 0) {
+            const prevIndex = idx - 1;
+            setCurrentIndex(prevIndex);
+            await playTrackRef.current?.(currentQueue[prevIndex]);
+          } else if (audio) {
+            audio.currentTime = 0;
+          }
+        });
+      } else {
+        navigator.mediaSession.setActionHandler("previoustrack", null);
+      }
+
+      // Explicitly disable seek forward/backward to prevent 10s skip buttons
+      navigator.mediaSession.setActionHandler("seekforward", null);
+      navigator.mediaSession.setActionHandler("seekbackward", null);
+
+      // Optional: Add seek to support scrubbing
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        const audio = audioRef.current;
+        if (audio && details.seekTime !== undefined) {
+          audio.currentTime = details.seekTime;
+        }
+      });
+    }
+  }, [queue, currentIndex, isPlaylistLooping]);
 
   // Listen for playback quality changes
   useEffect(() => {
@@ -286,10 +379,14 @@ export const AudioPlayerProvider = ({ children }: Props) => {
 
     return () => {
       clearTimeout(timeoutId);
-      audioPreloaders.forEach((audio) => {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load(); 
+      // IMPORTANT: Only cleanup preloader instances, not the main audio element
+      audioPreloaders.forEach((preloader) => {
+        // Make sure we're not touching the main audio element
+        if (preloader !== audioRef.current) {
+          preloader.pause();
+          preloader.removeAttribute("src");
+          preloader.load();
+        }
       });
     };
   }, [queue, currentIndex, playbackQuality]);
@@ -312,6 +409,8 @@ export const AudioPlayerProvider = ({ children }: Props) => {
             { src: getArtworkForSize(baseUrl, 192), sizes: "192x192", type: "image/jpeg" },
             { src: getArtworkForSize(baseUrl, 256), sizes: "256x256", type: "image/jpeg" },
             { src: getArtworkForSize(baseUrl, 512), sizes: "512x512", type: "image/jpeg" },
+            { src: getArtworkForSize(baseUrl, 1024), sizes: "1024x1024", type: "image/jpeg" },
+            { src: getArtworkForSize(baseUrl, 2048), sizes: "2048x2048", type: "image/jpeg" },
           ]
         : [];
 
@@ -322,7 +421,7 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         artwork,
       });
 
-      navigator.mediaSession.playbackState = "playing";
+      // DO NOT set playbackState here - let audio event listeners handle it exclusively
     }
   }, []);
 
@@ -346,6 +445,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
 
       reportNowPlaying(song.id).catch(console.error);
 
+      // Set flag to ignore pause events during track change
+      isChangingTrackRef.current = true;
+      
       audio.src = streamUrl;
       
       // Store the target volume and reset fade-out tracking
@@ -369,7 +471,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       
       try {
         await audio.play();
+        // Don't set state here - let handlePlay do it exclusively when the event fires
       } catch (error: any) {
+        isChangingTrackRef.current = false;
         if (error.name !== "AbortError") {
           console.error("Failed to play audio:", error);
         }
@@ -388,6 +492,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     if (!audio) return;
 
     const handlePlay = () => {
+      // Clear the track changing flag now that play event has actually fired
+      isChangingTrackRef.current = false;
+      
       setPlaybackInfo((prev) => ({ ...prev, isPlaying: true, isPaused: false, isLoading: false }));
       if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
       
@@ -401,6 +508,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     };
 
     const handlePause = () => {
+      // Ignore pause events during track changes to prevent state corruption
+      if (isChangingTrackRef.current) return;
+      
       setPlaybackInfo((prev) => ({ ...prev, isPlaying: false, isPaused: true }));
       if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
     };

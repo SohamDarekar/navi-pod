@@ -118,7 +118,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   useEffect(() => {
     if (typeof window !== "undefined" && !audioRef.current) {
       audioRef.current = new Audio();
-      audioRef.current.preload = "auto";
+      // FIXED: Always use 'metadata' for mobile efficiency
+      // This prevents downloading the whole song until you actually press play
+      audioRef.current.preload = "metadata";
 
       const savedVolume = parseFloat(localStorage.getItem(VOLUME_KEY) ?? "0.5");
       audioRef.current.volume = savedVolume;
@@ -357,25 +359,26 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     const audioPreloaders: HTMLAudioElement[] = [];
 
     const startPreload = () => {
-      // Preload next 2 songs
-      for (let i = 1; i <= 2; i++) {
-        const nextIndex = currentIndex + i;
-        if (nextIndex < queue.length) {
-          const nextSong = queue[nextIndex];
-          const streamUrl = getStreamUrl(nextSong.id, playbackQuality);
-          
-          if (streamUrl) {
-            const audio = new Audio();
-            audio.src = streamUrl;
-            audio.preload = "auto";
-            audio.load();
-            audioPreloaders.push(audio);
-          }
+      // FIXED: Only preload the VERY next song to save data
+      // And use 'metadata' so we don't kill bandwidth in the background
+      const nextIndex = currentIndex + 1;
+      
+      if (nextIndex < queue.length) {
+        const nextSong = queue[nextIndex];
+        const streamUrl = getStreamUrl(nextSong.id, playbackQuality);
+        
+        if (streamUrl) {
+          const audio = new Audio();
+          audio.src = streamUrl;
+          audio.preload = "metadata"; // Crucial for data saving
+          audio.load();
+          audioPreloaders.push(audio);
         }
       }
     };
 
-    timeoutId = setTimeout(startPreload, 2000);
+    // Wait 4 seconds (instead of 2) to ensure current song is stable before using network
+    timeoutId = setTimeout(startPreload, 4000);
 
     return () => {
       clearTimeout(timeoutId);
@@ -421,7 +424,11 @@ export const AudioPlayerProvider = ({ children }: Props) => {
         artwork,
       });
 
-      // DO NOT set playbackState here - let audio event listeners handle it exclusively
+      // FIXED: Force state to 'paused' if we aren't playing
+      // This tells iOS "don't kill this widget, we are just paused"
+      if (navigator.mediaSession.playbackState !== "playing") {
+        navigator.mediaSession.playbackState = "paused";
+      }
     }
   }, []);
 
@@ -517,6 +524,25 @@ export const AudioPlayerProvider = ({ children }: Props) => {
 
     const handleLoadStart = () => setPlaybackInfo((prev) => ({ ...prev, isLoading: true }));
     const handleCanPlay = () => setPlaybackInfo((prev) => ({ ...prev, isLoading: false }));
+
+    // FIXED: Add these handlers for network buffering
+    const handleStalled = () => {
+      // Network stopped sending data
+      if (!audio.paused) {
+        console.warn("Audio playback stalled, buffering...");
+        setPlaybackInfo((prev) => ({ ...prev, isLoading: true }));
+      }
+    };
+
+    const handleWaiting = () => {
+      // Audio ran out of buffer
+      setPlaybackInfo((prev) => ({ ...prev, isLoading: true }));
+    };
+
+    const handlePlaying = () => {
+      // Resumed from buffering
+      setPlaybackInfo((prev) => ({ ...prev, isLoading: false, isPlaying: true }));
+    };
 
     const handleTimeUpdate = () => {
       const currentTime = audio.currentTime;
@@ -617,6 +643,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
     audio.addEventListener("pause", handlePause);
     audio.addEventListener("loadstart", handleLoadStart);
     audio.addEventListener("canplay", handleCanPlay);
+    audio.addEventListener("stalled", handleStalled);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("playing", handlePlaying);
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("error", handleError);
@@ -626,6 +655,9 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       audio.removeEventListener("pause", handlePause);
       audio.removeEventListener("loadstart", handleLoadStart);
       audio.removeEventListener("canplay", handleCanPlay);
+      audio.removeEventListener("stalled", handleStalled);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("playing", handlePlaying);
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);

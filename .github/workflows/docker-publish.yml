@@ -11,8 +11,16 @@ env:
   GHCR_IMAGE: ghcr.io/sohamdarekar/navi-pod
 
 jobs:
-  docker:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -21,9 +29,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare platform pair
+        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | sed 's/\//-/g' >> "$GITHUB_ENV"
+
+      - name: Build and push (arch-tagged)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_IMAGE }}:${{ env.PLATFORM_PAIR }}-${{ github.sha }}
+            ${{ env.GHCR_IMAGE }}:${{ env.PLATFORM_PAIR }}-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -53,13 +97,10 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create multi-arch manifests and push
+        run: |
+          while IFS= read -r tag; do
+            docker buildx imagetools create -t "$tag" \
+              "${{ env.DOCKERHUB_IMAGE }}:linux-amd64-${{ github.sha }}" \
+              "${{ env.DOCKERHUB_IMAGE }}:linux-arm64-${{ github.sha }}"
+          done <<< "${{ steps.meta.outputs.tags }}"

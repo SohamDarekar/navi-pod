@@ -152,36 +152,58 @@ export const AudioPlayerProvider = ({ children }: Props) => {
   // Setup Media Session action handlers - updates when queue changes
   useEffect(() => {
     if ("mediaSession" in navigator) {
-      // Play action - DO NOT set playbackState here, let audio event listeners handle it
+      // Play action
       navigator.mediaSession.setActionHandler("play", async () => {
         const audio = audioRef.current;
-        if (audio) {
-          try {
-            await audio.play();
-          } catch (error) {
-            console.error("Media Session play failed:", error);
+        if (!audio) return;
+        try {
+          await audio.play();
+          // Explicitly sync state in case iOS suppressed the 'play' DOM event
+          // (happens after an interruption like a call/Siri/screen lock)
+          navigator.mediaSession.playbackState = "playing";
+        } catch (error) {
+          console.error("Media Session play failed:", error);
+          // iOS can leave the audio element in a broken decode state after an
+          // interruption. Reload the current source once and retry.
+          const streamUrl = audio.currentSrc;
+          if (streamUrl) {
+            try {
+              audio.load();
+              audio.src = streamUrl;
+              await audio.play();
+              navigator.mediaSession.playbackState = "playing";
+            } catch (retryError) {
+              console.error("Media Session play retry failed:", retryError);
+              navigator.mediaSession.playbackState = "paused";
+            }
+          } else {
+            navigator.mediaSession.playbackState = "paused";
           }
         }
       });
 
-      // Pause action - DO NOT set playbackState here, let audio event listeners handle it
+      // Pause action
       navigator.mediaSession.setActionHandler("pause", () => {
         const audio = audioRef.current;
         if (audio) {
           audio.pause();
         }
+        // Always sync state here too, don't rely solely on the 'pause' DOM
+        // event which iOS can drop in the background.
+        navigator.mediaSession.playbackState = "paused";
       });
 
       // Conditionally set nexttrack based on queue availability
       const hasNextTrack = queue.length > 0 && (currentIndex < queue.length - 1 || isPlaylistLooping);
       if (hasNextTrack) {
         navigator.mediaSession.setActionHandler("nexttrack", async () => {
+          if (isChangingTrackRef.current) return;
           const currentQueue = queueRef.current;
           const idx = currentIndexRef.current;
           const looping = isPlaylistLoopingRef.current;
-          
+
           if (currentQueue.length === 0) return;
-          
+
           if (idx < currentQueue.length - 1) {
             // Not at the end, go to next track
             const nextIndex = idx + 1;
@@ -201,10 +223,11 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       const hasPreviousTrack = queue.length > 0 && currentIndex > 0;
       if (hasPreviousTrack || queue.length > 0) {
         navigator.mediaSession.setActionHandler("previoustrack", async () => {
+          if (isChangingTrackRef.current) return;
           const currentQueue = queueRef.current;
           const idx = currentIndexRef.current;
           const audio = audioRef.current;
-          
+
           if (currentQueue.length === 0) return;
           
           // Restart song if > 3s played
@@ -671,6 +694,29 @@ export const AudioPlayerProvider = ({ children }: Props) => {
       }
     };
   }, [fadeInDuration, fadeOutDuration, applyFadeIn, applyFadeOut]);
+
+  // iOS can silently kill background audio (call, Siri, alarm, aggressive power
+  // management) without ever firing a 'pause' event. The app then still thinks
+  // it's playing and the lock screen shows the pause icon, but there's no
+  // sound. When the page becomes visible again, verify reality matches state
+  // and resume playback if it doesn't.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const audio = audioRef.current;
+      if (!audio || audio.paused) return;
+
+      const stalledSilently = audio.readyState < 2 || audio.error !== null;
+      if (stalledSilently) {
+        audio.play().catch((error) => {
+          console.error("Resume after interruption failed:", error);
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   const extractSongs = (queueOptions: MediaApi.QueueOptions): MediaApi.Song[] => {
     if (queueOptions.album?.songs) return queueOptions.album.songs;

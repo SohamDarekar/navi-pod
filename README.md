@@ -64,11 +64,18 @@ While visually faithful to the original project, the internals of NaviPod have b
 
 ### Docker (Recommended)
 
-The easiest way to get started is using the pre-built Docker image available on [Docker Hub](https://hub.docker.com/repository/docker/soh4m/navi-pod/general).
+The easiest way to get started is using the pre-built Docker image, available on both [Docker Hub](https://hub.docker.com/repository/docker/soh4m/navi-pod/general) and [GitHub Container Registry](https://github.com/SohamDarekar/navi-pod/pkgs/container/navi-pod).
 
-1) Run the image directly 
+1) Run the image directly
+
+From Docker Hub:
 ```bash
 docker run -p 3000:3000 soh4m/navi-pod
+```
+
+From GHCR:
+```bash
+docker run -p 3000:3000 ghcr.io/sohamdarekar/navi-pod
 ```
 
 2) Or via a `docker-compose.yml`
@@ -76,6 +83,7 @@ docker run -p 3000:3000 soh4m/navi-pod
 services:
   navi-pod:
     image: soh4m/navi-pod:latest
+    # or: ghcr.io/sohamdarekar/navi-pod:latest
     container_name: navi-pod
     ports:
       - "3000:3000"

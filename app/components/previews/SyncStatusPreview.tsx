@@ -128,9 +128,6 @@ const SyncStatusPreview = () => {
           </IconContainer>
           <Title>Sync Complete</Title>
           <Subtitle>All music synced with Navidrome</Subtitle>
-          {totalItems > 0 && (
-            <CountBadge>{totalItems} items</CountBadge>
-          )}
         </SyncCard>
       </Container>
     );
@@ -165,7 +162,7 @@ const SyncStatusPreview = () => {
         <StatusText>{Math.round(progress)}%</StatusText>
         {currentStep && <DetailText>{currentStep}</DetailText>}
         {totalItems > 0 && (
-          <CountBadge>{syncedItems} / {totalItems}</CountBadge>
+          <CountBadge>Step {syncedItems} / {totalItems}</CountBadge>
         )}
       </SyncCard>
     </Container>
